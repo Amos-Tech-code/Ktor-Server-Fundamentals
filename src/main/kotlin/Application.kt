@@ -1,9 +1,6 @@
 package com.example
 
-import com.example.plugins.configureResources
-import com.example.plugins.configureRouting
-import com.example.plugins.configureSerialization
-import com.example.plugins.configureStatusPages
+import com.example.plugins.*
 import io.ktor.server.application.*
 
 fun main(args: Array<String>) {
@@ -11,8 +8,12 @@ fun main(args: Array<String>) {
 }
 
 fun Application.module() {
-    configureRouting()
     configureResources()
+    configureRateLimiting()
+    configureRouting()
     configureSerialization()
     configureStatusPages()
+    configureRequestValidation()
+    configurePartialContent()
+    configureAutoHeadResponse()
 }

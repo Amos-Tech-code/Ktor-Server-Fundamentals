@@ -35,4 +35,10 @@ dependencies {
     implementation(libs.ktor.server.status.pages)
     //Request Validation
     implementation(libs.ktor.server.request.validation)
+    //Rate Limiting
+    implementation(libs.ktor.server.rate.limit)
+    //Auto Header Response
+    implementation(libs.ktor.server.auto.head.response)
+    //Partial Content
+    implementation(libs.ktor.server.partial.content)
 }

@@ -20,6 +20,12 @@ ktor-server-resources = { module = "io.ktor:ktor-server-resources", version.ref 
 ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages", version.ref = "ktor-version" }
 #Request Validation
 ktor-server-request-validation = { module = "io.ktor:ktor-server-request-validation", version.ref = "ktor-version" }
+#Rate Limiting
+ktor-server-rate-limit = { module = "io.ktor:ktor-server-rate-limit", version.ref = "ktor-version" }
+#Partial Content
+ktor-server-partial-content = { module = "io.ktor:ktor-server-partial-content", version.ref = "ktor-version" }
+#Auto Header Response
+ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response", version.ref = "ktor-version" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin-version" }
