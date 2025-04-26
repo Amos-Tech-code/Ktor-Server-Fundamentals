@@ -24,15 +24,15 @@ fun Application.configureStatusPages() {
             call.respondText(text = "429: Too many request. Wait after $retryAfter seconds.")
         }
 
-        status(HttpStatusCode.Unauthorized) { call, cause->
-            call.respondText("401: You are not unauthorized to access this resource", status = HttpStatusCode.Unauthorized)
-        }
+//        status(HttpStatusCode.Unauthorized) { call, cause->
+//            call.respondText("401: You are not unauthorized to access this resource", status = HttpStatusCode.Unauthorized)
+//        }
 
         status(HttpStatusCode.BadRequest) { call, cause->
             call.respondText("400: ${cause.description}", status = HttpStatusCode.BadRequest)
         }
 
-        statusFile(HttpStatusCode.BadRequest, HttpStatusCode.Unauthorized, HttpStatusCode.NotFound, filePattern = "errors/error#.html")
+        statusFile(HttpStatusCode.BadRequest, /*HttpStatusCode.Unauthorized,*/ HttpStatusCode.NotFound, filePattern = "errors/error#.html")
 
     }
 }

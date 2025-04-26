@@ -1,8 +1,11 @@
 package com.example.plugins
 
+import io.ktor.client.*
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.server.application.*
+import io.ktor.server.auth.*
+import io.ktor.server.auth.jwt.*
 import io.ktor.server.http.content.*
 import io.ktor.server.plugins.ratelimit.*
 import io.ktor.server.plugins.requestvalidation.*
@@ -11,25 +14,42 @@ import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.routing.get
+import io.ktor.server.sessions.*
+import io.ktor.server.sse.*
+import io.ktor.server.websocket.*
+import io.ktor.sse.*
 import io.ktor.util.cio.*
 import io.ktor.utils.io.*
+import io.ktor.websocket.*
+import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Path
+import java.nio.file.Paths
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
 
-fun Application.configureRouting() {
+fun Application.configureRouting(
+    config: JWTConfig,
+    httpClient: HttpClient
+) {
 
-    install(RoutingRoot) {
-        route("/", HttpMethod.Get) {
-            handle {
-                call.respondText("Hello Client What do you want to request?")
-            }
-        }
-    }
+    val usersDB = mutableMapOf<String, String>()
+    val userDB_2 = mutableMapOf<String, UserInfo>()
+
+//    install(RoutingRoot) {
+//        route("/", HttpMethod.Get) {
+//            handle {
+//                call.respondText("Hello Client What do you want to request?")
+//            }
+//        }
+//    }
 
     routing {
+
         post("/channel") {
             val channel = call.receiveChannel()
             val text = channel.readRemaining().readText()
@@ -229,14 +249,185 @@ fun Application.configureRouting() {
         get("redirect") {
             call.respondRedirect("moved", permanent = true)
         }
+
         get("moved") {
             call.respondText("Redirected to moved route")
+        }
+        //Static
+        staticResources("/static", "static") {
+            extensions("html")
+        }
+        //Static files
+        staticFiles("/uploads", File("uploads")) {
+            exclude { file ->
+                file.path.contains("jpeg") //Exclude files
+            }
+
+            contentType { file ->
+                when (file.name) {
+                    "index.txt" -> ContentType.Text.Html
+                    else -> null
+                }
+            }
+
+            cacheControl { file ->
+                when (file.name) {
+                    "index.txt" -> listOf(CacheControl.MaxAge(10000))
+                    else -> emptyList()
+                }
+
+               // listOf(CacheControl.MaxAge(10000))
+            }
+        }
+        //Static Zip Files
+        staticZip("/zips", "uploads", zip = Paths.get("zips/uploads.zip"))
+
+        //Authentication -> Session
+//        authenticate("session-auth") {
+//            get("auth") {
+//                val username = call.principal<UserSession>()?.userName
+//                call.respond("Hello $username!")
+//            }
+//        }
+
+        //JWT Authentication
+        authenticate("jwt-auth") {
+            get("") {
+                val principal = call.principal<JWTPrincipal>()
+                val username = principal?.payload?.getClaim("username")?.asString()
+                //val expiresAt = principal?.expiresAt?.time?.minus(System.currentTimeMillis())
+                val userInfo = userDB_2[username] ?: mapOf("error" to true)
+                call.respond(userInfo)
+
+                //call.respond("Hello $username! The token expires after $expiresAt milliseconds")
+            }
+        }
+        //Auth sessions
+        post("signup") {
+            val requestData = call.receive<AuthRequest>()
+
+            if (usersDB.contains(requestData.userName)) {
+                call.respondText("User already exists")
+            } else {
+                usersDB[requestData.userName] = requestData.password
+                //call.sessions.set(UserSession(requestData.userName))
+                val token = generateToken(config = config, userName = requestData.userName)
+                call.respond(mapOf("token" to token, "message" to "User signup success"))
+            }
+        }
+
+        post("login") {
+            val requestData = call.receive<AuthRequest>()
+            val storedPassword = usersDB[requestData.userName] ?: return@post call.respondText("User doesn't exist")
+
+            if (storedPassword == requestData.password) {
+                //call.sessions.set(UserSession(requestData.userName))
+                val token = generateToken(config = config, userName = requestData.userName)
+                call.respond(mapOf("token" to token, "message" to "Login success"))
+            } else {
+                call.respondText("Invalid Credentials")
+            }
+
+        }
+
+        //Google Login
+        authenticate("google-oauth") {
+
+            get("login-google") {
+
+            }
+
+            get("callback") {
+                val principal : OAuthAccessTokenResponse.OAuth2? = call.principal()
+                if (principal == null) {
+                    call.respondText("OAUTH failed", status = HttpStatusCode.Unauthorized)
+                    return@get
+                }
+
+                val accessToken = principal.accessToken
+                val userInfo = fetchGoogleUserInfo(
+                    httpClient = httpClient,
+                    accessToken = accessToken
+                )
+
+                if (userInfo != null) {
+                    userDB_2[userInfo.userId] = userInfo
+                    val token = generateToken(config, userName = userInfo.userId)
+                    call.respond(mapOf("token" to token))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError)
+                }
+
+            }
+        }
+
+        post("logout") {
+//            call.sessions.clear<UserSession>()
+//            call.respondText("Logout success")
+        }
+
+        //Server Sent Events
+        sse("events") {
+            repeat(6) {
+                send(ServerSentEvent("Event: ${it + 1}"))
+                delay(1000L)
+            }
+        }
+
+        //Websockets
+        val onlineUsers = ConcurrentHashMap<String, WebSocketSession>()
+
+        webSocket("chat") {
+            val userName = call.request.queryParameters["userName"] ?: run {
+                this.close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "UserName is required for connection establishment."))
+                return@webSocket
+            }
+
+            onlineUsers[userName] = this
+            send("You are connected!")
+            try {
+                incoming.consumeEach { frame ->
+                    if (frame is Frame.Text) {
+                        val message = Json.decodeFromString<Message>(frame.readText())
+                        if (message.to.isNullOrBlank()) {
+                            onlineUsers.values.forEach {
+                                it.send("$userName : ${message.text}")
+                            }
+                        } else {
+                            val session = onlineUsers[message.to]
+
+                            session?.send("$userName : ${message.text}")
+                        }
+                    }
+                }
+
+            } finally {
+                onlineUsers.remove(userName)
+                this.close()
+
+            }
+        }
+
+        //Testing Call Logging
+        get("hello") {
+
+            call.respondText("Hello World!")
+        }
+
+        get("hi"){
+            call.respondText("Hello world!!")
         }
 
     }
 
+
 }
 
+@Serializable
+data class AuthRequest(
+    val userName: String,
+    val password: String
+)
 
 @Serializable
 data class ProductResponse(
@@ -250,4 +441,11 @@ data class Product(
     val name: String?,
     val category: String?,
     val price: Int?
+)
+
+@Serializable
+data class Message(
+    val text: String,
+    val to: String? = null,
+
 )

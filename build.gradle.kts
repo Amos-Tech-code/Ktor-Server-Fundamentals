@@ -41,4 +41,21 @@ dependencies {
     implementation(libs.ktor.server.auto.head.response)
     //Partial Content
     implementation(libs.ktor.server.partial.content)
+    //Sessions
+    implementation(libs.ktor.server.sessions)
+    //Basic Auth & JWT
+    implementation(libs.ktor.server.auth)
+    //JWT
+    implementation(libs.ktor.server.auth.jwt)
+    //Ktor Client
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    //Server Side Events
+    implementation(libs.ktor.server.sse)
+    //WebSockets
+    implementation(libs.ktor.server.websockets)
+    //Call Logging
+    implementation(libs.ktor.server.call.logging)
+
 }
